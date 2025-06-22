@@ -988,10 +988,10 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
                                 <td><?php echo htmlspecialchars($cadastro['cidade']); ?></td>
                                 <td><?php echo htmlspecialchars($cadastro['cargo']); ?></td>
                                 <td>
-                                    <strong>📱</strong> <?php echo htmlspecialchars($cadastro['telefone']); ?><br>
+                                    <strong><!-- 📱 --></strong> <?php echo htmlspecialchars($cadastro['telefone']); ?><br>
                                     <div class="email-display">
                                         <?php if (!empty($cadastro['email'])): ?>
-                                            📧 <?php echo htmlspecialchars($cadastro['email']); ?>
+                                            <!-- 📧 --> <?php echo htmlspecialchars($cadastro['email']); ?>
                                         <?php endif; ?>
                                     </div>
                                 </td>
