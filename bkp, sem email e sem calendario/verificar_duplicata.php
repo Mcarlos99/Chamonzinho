@@ -14,7 +14,6 @@ $input = json_decode(file_get_contents('php://input'), true);
 
 $nome = sanitizeInput($input['nome'] ?? '');
 $telefone = sanitizeInput($input['telefone'] ?? '');
-$email = sanitizeInput($input['email'] ?? '');
 $data_nascimento = sanitizeInput($input['data_nascimento'] ?? '');
 
 if (empty($nome) || empty($telefone)) {
@@ -30,7 +29,7 @@ try {
     $duplicatas = [];
     
     // 1. Verificar por telefone (mais confiável)
-    $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, telefone, email, data_cadastro, status FROM cadastros WHERE telefone = ? AND status = 'ativo'");
+    $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, data_cadastro, status FROM cadastros WHERE telefone = ? AND status = 'ativo'");
     $stmt->execute([$telefone]);
     $cadastro_telefone = $stmt->fetch();
     
@@ -43,25 +42,9 @@ try {
         ];
     }
     
-    // 2. Verificar por email (se fornecido)
-    if (!empty($email)) {
-        $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, telefone, email, data_cadastro, status FROM cadastros WHERE email = ? AND status = 'ativo'");
-        $stmt->execute([$email]);
-        $cadastro_email = $stmt->fetch();
-        
-        if ($cadastro_email) {
-            $duplicatas[] = [
-                'tipo' => 'email',
-                'criterio' => 'Mesmo email',
-                'cadastro' => $cadastro_email,
-                'confiabilidade' => 'alta'
-            ];
-        }
-    }
-    
-    // 3. Verificar por nome completo + data nascimento
+    // 2. Verificar por nome completo + data nascimento
     if (!empty($data_nascimento)) {
-        $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, telefone, email, data_cadastro, status FROM cadastros WHERE nome = ? AND data_nascimento = ? AND status = 'ativo'");
+        $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, telefone, data_cadastro, status FROM cadastros WHERE nome = ? AND data_nascimento = ? AND status = 'ativo'");
         $stmt->execute([$nome, $data_nascimento]);
         $cadastro_nome_data = $stmt->fetch();
         
@@ -75,8 +58,8 @@ try {
         }
     }
     
-    // 4. Verificar nomes similares (soundex para nomes parecidos)
-    $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, telefone, email, data_cadastro, status FROM cadastros WHERE SOUNDEX(nome) = SOUNDEX(?) AND status = 'ativo' AND nome != ?");
+    // 3. Verificar nomes similares (soundex para nomes parecidos)
+    $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, telefone, data_cadastro, status FROM cadastros WHERE SOUNDEX(nome) = SOUNDEX(?) AND status = 'ativo' AND nome != ?");
     $stmt->execute([$nome, $nome]);
     $cadastros_similares = $stmt->fetchAll();
     
@@ -95,14 +78,14 @@ try {
         }
     }
     
-    // 5. Verificar por nome + cidade (menos confiável)
+    // 4. Verificar por nome + cidade (menos confiável)
     if (!empty($input['cidade'])) {
         $cidade = sanitizeInput($input['cidade']);
-        $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, telefone, email, data_cadastro, status FROM cadastros WHERE nome = ? AND cidade = ? AND status = 'ativo'");
+        $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, telefone, data_cadastro, status FROM cadastros WHERE nome = ? AND cidade = ? AND status = 'ativo'");
         $stmt->execute([$nome, $cidade]);
         $cadastro_nome_cidade = $stmt->fetch();
         
-        if ($cadastro_nome_cidade && !$cadastro_telefone && !$cadastro_email && !$cadastro_nome_data) {
+        if ($cadastro_nome_cidade && !$cadastro_telefone && !$cadastro_nome_data) {
             $duplicatas[] = [
                 'tipo' => 'nome_cidade',
                 'criterio' => 'Mesmo nome e cidade',
@@ -113,28 +96,16 @@ try {
     }
     
     if (!empty($duplicatas)) {
-        // Remover duplicatas (mesmo cadastro encontrado por diferentes critérios)
-        $cadastros_unicos = [];
-        $ids_processados = [];
-        
-        foreach ($duplicatas as $dup) {
-            $id = $dup['cadastro']['id'];
-            if (!in_array($id, $ids_processados)) {
-                $cadastros_unicos[] = $dup;
-                $ids_processados[] = $id;
-            }
-        }
-        
         // Ordenar por confiabilidade (alta -> media -> baixa)
-        usort($cadastros_unicos, function($a, $b) {
+        usort($duplicatas, function($a, $b) {
             $ordem = ['alta' => 3, 'media' => 2, 'baixa' => 1];
             return $ordem[$b['confiabilidade']] - $ordem[$a['confiabilidade']];
         });
         
         echo json_encode([
             'duplicata' => true,
-            'duplicatas' => $cadastros_unicos,
-            'total' => count($cadastros_unicos)
+            'duplicatas' => $duplicatas,
+            'total' => count($duplicatas)
         ]);
     } else {
         echo json_encode(['duplicata' => false]);

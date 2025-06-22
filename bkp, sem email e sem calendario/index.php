@@ -12,7 +12,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $cidade = sanitizeInput($_POST['cidade']);
         $cargo = sanitizeInput($_POST['cargo']);
         $telefone = sanitizeInput($_POST['telefone']);
-        $email = sanitizeInput($_POST['email']); // Novo campo email
         $data_nascimento_input = sanitizeInput($_POST['nascimento']);
         $observacoes = sanitizeInput($_POST['observacoes']);
         
@@ -32,23 +31,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             throw new Exception('Formato de telefone inválido.');
         }
         
-        // Validar email se fornecido
-        if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            throw new Exception('Formato de email inválido.');
-        }
-        
         // Conectar ao banco e inserir dados
         $db = new Database();
         $pdo = $db->getConnection();
         
-        $stmt = $pdo->prepare("INSERT INTO cadastros (nome, cidade, cargo, telefone, email, data_nascimento, observacoes, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt = $pdo->prepare("INSERT INTO cadastros (nome, cidade, cargo, telefone, data_nascimento, observacoes, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?)");
         
         $result = $stmt->execute([
             $nome,
             $cidade,
             $cargo,
             $telefone,
-            $email,
             $data_nascimento,
             $observacoes,
             getClientIP()
@@ -188,12 +181,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             transition: color 0.3s ease;
         }
 
-        .form-group label .optional {
-            font-weight: normal;
-            color: #666;
-            font-size: 0.9em;
-        }
-
         .form-group input,
         .form-group textarea,
         .form-group select {
@@ -252,15 +239,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             gap: 20px;
         }
 
-        .form-row-three {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 20px;
-        }
-
         @media (max-width: 768px) {
-            .form-row,
-            .form-row-three {
+            .form-row {
                 grid-template-columns: 1fr;
             }
             
@@ -364,24 +344,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             font-weight: bold;
             cursor: pointer;
         }
-
-        .email-icon {
-            position: absolute;
-            right: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #666;
-            font-size: 1.1em;
-            pointer-events: none;
-        }
-
-        .form-group.has-icon {
-            position: relative;
-        }
-
-        .form-group.has-icon input {
-            padding-right: 50px;
-        }
     </style>
 </head>
 <body>
@@ -430,7 +392,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     </div>
                 </div>
                 
-                <div class="form-row-three">
+                <div class="form-row">
                     <div class="form-group">
                         <label for="cargo">Cargo *</label>
                         <input type="text" id="cargo" name="cargo" required maxlength="100">
@@ -439,12 +401,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     <div class="form-group">
                         <label for="telefone">Telefone *</label>
                         <input type="tel" id="telefone" name="telefone" required maxlength="15" placeholder="(00) 00000-0000">
-                    </div>
-
-                    <div class="form-group has-icon">
-                        <label for="email">Email <span class="optional">(opcional)</span></label>
-                        <input type="email" id="email" name="email" maxlength="255" placeholder="seu@email.com">
-                        <span class="email-icon">📧</span>
                     </div>
                 </div>
                 
@@ -494,7 +450,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         async function verificarDuplicatas() {
             const nome = document.getElementById('nome').value.trim();
             const telefone = document.getElementById('telefone').value.trim();
-            const email = document.getElementById('email').value.trim();
             const nascimento = document.getElementById('nascimento').value.trim();
             const cidade = document.getElementById('cidade').value.trim();
 
@@ -511,7 +466,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     body: JSON.stringify({
                         nome: nome,
                         telefone: telefone,
-                        email: email,
                         data_nascimento: nascimento,
                         cidade: cidade
                     })
@@ -549,7 +503,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         <strong>Cidade:</strong> ${cadastro.cidade}<br>
                         <strong>Cargo:</strong> ${cadastro.cargo}<br>
                         <strong>Telefone:</strong> ${cadastro.telefone}<br>
-                        ${cadastro.email ? `<strong>Email:</strong> ${cadastro.email}<br>` : ''}
                         <strong>Cadastrado em:</strong> ${dataCadastro}<br>
                         <small style="color: #666;">Confiabilidade: ${dup.confiabilidade.toUpperCase()}</small>
                     </div>
@@ -598,16 +551,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         });
 
-        // Verificação automática ao sair do campo email
-        document.getElementById('email').addEventListener('blur', async function() {
-            const telefone = document.getElementById('telefone').value;
-            const nome = document.getElementById('nome').value;
-            if (!verificacaoRealizada && this.value.length >= 5 && telefone.length >= 14 && nome.length >= 3) {
-                verificacaoRealizada = true;
-                await verificarDuplicatas();
-            }
-        });
-
         // Verificação automática ao sair do campo nome (se telefone já estiver preenchido)
         document.getElementById('nome').addEventListener('blur', async function() {
             const telefone = document.getElementById('telefone').value;
@@ -619,15 +562,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         // Interceptar envio do formulário
         document.querySelector('form').addEventListener('submit', async function(e) {
-            // Validar email se fornecido
-            const email = document.getElementById('email').value.trim();
-            if (email && !validateEmail(email)) {
-                e.preventDefault();
-                alert('Por favor, digite um email válido.');
-                document.getElementById('email').focus();
-                return false;
-            }
-
             // Se encontrou duplicata mas não confirmou, impedir envio
             if (duplicataEncontrada && !document.getElementById('confirmarDuplicata').checked) {
                 e.preventDefault();
@@ -661,12 +595,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         });
 
-        // Função para validar email
-        function validateEmail(email) {
-            const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            return re.test(email);
-        }
-
         // Máscara para telefone
         document.getElementById('telefone').addEventListener('input', function(e) {
             let value = e.target.value.replace(/\D/g, '');
@@ -681,28 +609,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             value = value.replace(/(\d{2})(\d)/, '$1/$2');
             value = value.replace(/(\d{2})\/(\d{2})(\d)/, '$1/$2/$3');
             e.target.value = value;
-        });
-
-        // Validação em tempo real do email
-        document.getElementById('email').addEventListener('input', function(e) {
-            const email = e.target.value;
-            const emailIcon = document.querySelector('.email-icon');
-            
-            if (email.length > 0) {
-                if (validateEmail(email)) {
-                    e.target.style.borderColor = '#28a745';
-                    emailIcon.style.color = '#28a745';
-                    emailIcon.textContent = '✅';
-                } else {
-                    e.target.style.borderColor = '#dc3545';
-                    emailIcon.style.color = '#dc3545';
-                    emailIcon.textContent = '❌';
-                }
-            } else {
-                e.target.style.borderColor = '#e0e0e0';
-                emailIcon.style.color = '#666';
-                emailIcon.textContent = '📧';
-            }
         });
 
         // Validação da data no envio do formulário
