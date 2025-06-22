@@ -148,26 +148,6 @@ $stats_stmt = $pdo->query("
     FROM cadastros
 ");
 $stats = $stats_stmt->fetch();
-
-// Buscar agendamentos de hoje para notificação
-$agendamentos_hoje_stmt = $pdo->query("
-    SELECT COUNT(*) as total_hoje,
-           COUNT(CASE WHEN prioridade IN ('alta', 'urgente') THEN 1 END) as urgentes_hoje
-    FROM agendamentos 
-    WHERE data_agendamento = CURDATE() 
-    AND status IN ('agendado', 'confirmado')
-");
-$agendamentos_hoje_info = $agendamentos_hoje_stmt->fetch();
-
-// Buscar próximos agendamentos (próximos 3 dias)
-$proximos_agendamentos_stmt = $pdo->query("
-    SELECT COUNT(*) as total_proximos
-    FROM agendamentos 
-    WHERE data_agendamento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 3 DAY)
-    AND status IN ('agendado', 'confirmado')
-");
-$proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
-
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -819,26 +799,6 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
                 grid-template-columns: 1fr; 
             }
         }
-
-        .calendario-widget {
-    background: linear-gradient(135deg, #28a745, #20c997);
-    color: white;
-    padding: 20px;
-    border-radius: 10px;
-    text-align: center;
-    transition: all 0.3s ease;
-    text-decoration: none;
-    display: block;
-    box-shadow: 0 2px 10px rgba(40, 167, 69, 0.3);
-}
-
-.calendario-widget:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 25px rgba(40, 167, 69, 0.4);
-    color: white;
-    text-decoration: none;
-}
-
     </style>
 </head>
 <body>
@@ -869,10 +829,10 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
                 <div class="stat-number"><?php echo $stats['ativos']; ?></div>
                 <div>Cadastros Ativos</div>
             </div>
-<!--             <div class="stat-card">
+            <div class="stat-card">
                 <div class="stat-number"><?php echo $stats['com_email']; ?></div>
-                <div>Com Email</div> 
-            </div> -->
+                <div>Com Email</div>
+            </div>
             <div class="stat-card">
                 <div class="stat-number"><?php echo $stats['hoje']; ?></div>
                 <div>Cadastros Hoje</div>
@@ -881,39 +841,7 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
                 <div class="stat-number"><?php echo $stats['semana']; ?></div>
                 <div>Esta Semana</div>
             </div>
-            <a href="calendario.php" class="calendario-widget">
-             <h3>📅 Calendário</h3>
-             <div class="stat-number" style="color: white; margin-bottom: 5px;">
-             <?php echo $proximos_agendamentos_info['total_proximos']; ?>
-             </div>
-             <div class="info">Próximos 3 dias</div>
-             </a>
         </div>
-
-
-        <?php if ($agendamentos_hoje_info['total_hoje'] > 0): ?>
-    <div style="background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 8px; margin-bottom: 20px; animation: pulse 2s infinite;">
-        <h3 style="margin: 0 0 10px 0; display: flex; align-items: center; gap: 10px;">
-            🚨 Agendamentos de Hoje
-            <span style="background: #856404; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8em;">
-                <?php echo $agendamentos_hoje_info['total_hoje']; ?>
-            </span>
-            <?php if ($agendamentos_hoje_info['urgentes_hoje'] > 0): ?>
-                <span style="background: #dc3545; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8em;">
-                    🔴 <?php echo $agendamentos_hoje_info['urgentes_hoje']; ?> urgente(s)
-                </span>
-            <?php endif; ?>
-        </h3>
-        <p style="margin: 0;">
-            Você tem <strong><?php echo $agendamentos_hoje_info['total_hoje']; ?> agendamento(s)</strong> programado(s) para hoje.
-            <a href="calendario.php" style="color: #003366; font-weight: bold; text-decoration: none; margin-left: 10px;">
-                📅 Ver Calendário →
-            </a>
-        </p>
-    </div>
-<?php endif; ?>
-
-
 
         <!-- Filtros -->
         <div class="filters">
