@@ -444,7 +444,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     <div class="form-group has-icon">
                         <label for="email">Email <span class="optional">(opcional)</span></label>
                         <input type="email" id="email" name="email" maxlength="255" placeholder="seu@email.com">
-                        <span class="email-icon">📧</span>
+                        <!-- <span class="email-icon">📧</span> -->
                     </div>
                 </div>
                 

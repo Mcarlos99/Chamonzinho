@@ -46,6 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $cidade = sanitizeInput($_POST['cidade']);
                     $cargo = sanitizeInput($_POST['cargo']);
                     $telefone = sanitizeInput($_POST['telefone']);
+                    $email = sanitizeInput($_POST['email']); // Campo email
                     $data_nascimento_input = sanitizeInput($_POST['data_nascimento']);
                     $observacoes = sanitizeInput($_POST['observacoes']);
                     $observacoes_admin = sanitizeInput($_POST['observacoes_admin']);
@@ -61,8 +62,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         throw new Exception('Todos os campos obrigatórios devem ser preenchidos.');
                     }
                     
-                    $stmt = $pdo->prepare("UPDATE cadastros SET nome = ?, cidade = ?, cargo = ?, telefone = ?, data_nascimento = ?, observacoes = ?, observacoes_admin = ? WHERE id = ?");
-                    if ($stmt->execute([$nome, $cidade, $cargo, $telefone, $data_nascimento, $observacoes, $observacoes_admin, $id])) {
+                    // Validar email se fornecido
+                    if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                        throw new Exception('Formato de email inválido.');
+                    }
+                    
+                    $stmt = $pdo->prepare("UPDATE cadastros SET nome = ?, cidade = ?, cargo = ?, telefone = ?, email = ?, data_nascimento = ?, observacoes = ?, observacoes_admin = ? WHERE id = ?");
+                    if ($stmt->execute([$nome, $cidade, $cargo, $telefone, $email, $data_nascimento, $observacoes, $observacoes_admin, $id])) {
                         logActivity('admin_action', "Cadastro ID $id editado por " . $admin['usuario'] . " - Obs Admin: " . substr($observacoes_admin, 0, 50));
                         $message = "Cadastro atualizado com sucesso!";
                         $messageType = 'success';
@@ -91,7 +97,8 @@ $where_conditions = [];
 $params = [];
 
 if ($search) {
-    $where_conditions[] = "(nome LIKE ? OR cargo LIKE ?)";
+    $where_conditions[] = "(nome LIKE ? OR cargo LIKE ? OR email LIKE ?)";
+    $params[] = "%$search%";
     $params[] = "%$search%";
     $params[] = "%$search%";
 }
@@ -136,7 +143,8 @@ $stats_stmt = $pdo->query("
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'ativo' THEN 1 END) as ativos,
         COUNT(CASE WHEN DATE(data_cadastro) = CURDATE() THEN 1 END) as hoje,
-        COUNT(CASE WHEN WEEK(data_cadastro) = WEEK(NOW()) THEN 1 END) as semana
+        COUNT(CASE WHEN WEEK(data_cadastro) = WEEK(NOW()) THEN 1 END) as semana,
+        COUNT(CASE WHEN email IS NOT NULL AND email != '' THEN 1 END) as com_email
     FROM cadastros
 ");
 $stats = $stats_stmt->fetch();
@@ -360,6 +368,18 @@ $stats = $stats_stmt->fetch();
         .message.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .message.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
 
+        .email-display {
+            color: #0066cc;
+            font-size: 0.8em;
+            word-break: break-word;
+        }
+
+        .email-display:empty:before {
+            content: "Não informado";
+            color: #999;
+            font-style: italic;
+        }
+
         /* Modal Styles */
         .modal {
             display: none;
@@ -413,6 +433,12 @@ $stats = $stats_stmt->fetch();
         .modal-form-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .modal-form-row-three {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 15px;
         }
 
@@ -728,9 +754,16 @@ $stats = $stats_stmt->fetch();
         }
 
         @media (max-width: 768px) {
-            .modal-form-row { grid-template-columns: 1fr; }
-            .filters-grid { grid-template-columns: 1fr; }
-            .table-container { overflow-x: auto; }
+            .modal-form-row,
+            .modal-form-row-three { 
+                grid-template-columns: 1fr; 
+            }
+            .filters-grid { 
+                grid-template-columns: 1fr; 
+            }
+            .table-container { 
+                overflow-x: auto; 
+            }
             
             .filter-buttons {
                 flex-direction: column;
@@ -760,6 +793,10 @@ $stats = $stats_stmt->fetch();
             
             .table th:last-child, .table td:last-child {
                 min-width: 120px;
+            }
+
+            .info-grid { 
+                grid-template-columns: 1fr; 
             }
         }
     </style>
@@ -793,6 +830,10 @@ $stats = $stats_stmt->fetch();
                 <div>Cadastros Ativos</div>
             </div>
             <div class="stat-card">
+                <div class="stat-number"><?php echo $stats['com_email']; ?></div>
+                <div>Com Email</div>
+            </div>
+            <div class="stat-card">
                 <div class="stat-number"><?php echo $stats['hoje']; ?></div>
                 <div>Cadastros Hoje</div>
             </div>
@@ -807,7 +848,7 @@ $stats = $stats_stmt->fetch();
             <form method="GET">
                 <div class="filters-grid">
                     <div class="form-group">
-                        <label>Buscar por Nome/Cargo</label>
+                        <label>Buscar por Nome/Cargo/Email</label>
                         <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>" placeholder="Digite para buscar...">
                     </div>
                     <div class="form-group">
@@ -849,7 +890,7 @@ $stats = $stats_stmt->fetch();
                         <th>Nome</th>
                         <th>Cidade</th>
                         <th>Cargo</th>
-                        <th>Telefone</th>
+                        <th>Contato</th>
                         <th>Status</th>
                         <th>Obs. Admin</th>
                         <th>Data Cadastro</th>
@@ -874,7 +915,14 @@ $stats = $stats_stmt->fetch();
                                 </td>
                                 <td><?php echo htmlspecialchars($cadastro['cidade']); ?></td>
                                 <td><?php echo htmlspecialchars($cadastro['cargo']); ?></td>
-                                <td><?php echo htmlspecialchars($cadastro['telefone']); ?></td>
+                                <td>
+                                    <strong>📱</strong> <?php echo htmlspecialchars($cadastro['telefone']); ?><br>
+                                    <div class="email-display">
+                                        <?php if (!empty($cadastro['email'])): ?>
+                                            📧 <?php echo htmlspecialchars($cadastro['email']); ?>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
                                 <td>
                                     <span class="status-badge status-<?php echo $cadastro['status']; ?>">
                                         <?php echo ucfirst($cadastro['status']); ?>
@@ -980,6 +1028,10 @@ $stats = $stats_stmt->fetch();
                             <div class="info-value" id="view_telefone">-</div>
                         </div>
                         <div class="info-item">
+                            <div class="info-label">Email</div>
+                            <div class="info-value" id="view_email">-</div>
+                        </div>
+                        <div class="info-item">
                             <div class="info-label">Status</div>
                             <div class="info-value">
                                 <span class="status-display" id="view_status">-</span>
@@ -1063,7 +1115,7 @@ $stats = $stats_stmt->fetch();
                     </div>
                 </div>
 
-                <div class="modal-form-row">
+                <div class="modal-form-row-three">
                     <div>
                         <label for="edit_cargo">Cargo *</label>
                         <input type="text" id="edit_cargo" name="cargo" required maxlength="100">
@@ -1071,6 +1123,10 @@ $stats = $stats_stmt->fetch();
                     <div>
                         <label for="edit_telefone">Telefone *</label>
                         <input type="text" id="edit_telefone" name="telefone" required maxlength="15">
+                    </div>
+                    <div>
+                        <label for="edit_email">Email</label>
+                        <input type="email" id="edit_email" name="email" maxlength="255" placeholder="email@exemplo.com">
                     </div>
                 </div>
 
@@ -1120,6 +1176,7 @@ $stats = $stats_stmt->fetch();
             document.getElementById('view_cidade').textContent = cadastro.cidade;
             document.getElementById('view_cargo').textContent = cadastro.cargo;
             document.getElementById('view_telefone').textContent = cadastro.telefone;
+            document.getElementById('view_email').textContent = cadastro.email || 'Não informado';
             document.getElementById('view_id').textContent = cadastro.id;
             document.getElementById('view_ip').textContent = cadastro.ip_address || 'Não registrado';
             
@@ -1154,7 +1211,6 @@ $stats = $stats_stmt->fetch();
             // Observações administrativas
             const obsAdminElement = document.getElementById('view_observacoes_admin');
             if (cadastro.observacoes_admin && cadastro.observacoes_admin.trim()) {
-                // Manter quebras de linha e formatação
                 obsAdminElement.textContent = cadastro.observacoes_admin;
                 obsAdminElement.style.fontStyle = 'normal';
                 obsAdminElement.style.whiteSpace = 'pre-wrap';
@@ -1186,29 +1242,29 @@ $stats = $stats_stmt->fetch();
             document.getElementById('modalView').classList.remove('show');
         }
 
-        // Função para atualizar página
-        function atualizarPagina() {
-            if (confirm('Atualizar a página para buscar novos cadastros?')) {
-                location.reload();
-            }
-        }
+        // Função para imprimir cadastro
         function imprimirCadastro() {
-            // Garantir que o modal esteja visível antes de imprimir
             const modal = document.getElementById('modalView');
             if (!modal.classList.contains('show')) {
                 alert('Erro: Modal não está aberto.');
                 return;
             }
             
-            // Pequeno delay para garantir que tudo foi renderizado
             setTimeout(function() {
                 window.print();
             }, 100);
         }
+
+        // Função para atualizar página
+        function atualizarPagina() {
+            if (confirm('Atualizar a página para buscar novos cadastros?')) {
+                location.reload();
+            }
+        }
+
         function editarCadastro(id) {
             console.log('Abrindo modal para ID:', id);
             
-            // Buscar dados do cadastro
             const cadastro = cadastrosData.find(c => c.id == id);
             if (!cadastro) {
                 alert('Cadastro não encontrado!');
@@ -1221,6 +1277,7 @@ $stats = $stats_stmt->fetch();
             document.getElementById('edit_cidade').value = cadastro.cidade;
             document.getElementById('edit_cargo').value = cadastro.cargo;
             document.getElementById('edit_telefone').value = cadastro.telefone;
+            document.getElementById('edit_email').value = cadastro.email || '';
             document.getElementById('edit_observacoes').value = cadastro.observacoes || '';
             document.getElementById('edit_observacoes_admin').value = cadastro.observacoes_admin || '';
             
@@ -1232,30 +1289,33 @@ $stats = $stats_stmt->fetch();
                 }
             }
             
-            // Mostrar modal
             document.getElementById('modalEdit').classList.add('show');
         }
 
-        // Função para fechar modal
         function fecharModal() {
             document.getElementById('modalEdit').classList.remove('show');
         }
 
-        // Fechar modal de visualização clicando no fundo
+        // Fechar modais clicando no fundo
         document.getElementById('modalView').addEventListener('click', function(e) {
             if (e.target === this) {
                 fecharModalView();
             }
         });
 
-        // Fechar modal clicando no fundo
         document.getElementById('modalEdit').addEventListener('click', function(e) {
             if (e.target === this) {
                 fecharModal();
             }
         });
 
-        // Event listeners para máscaras
+        // Função para validar email
+        function validateEmail(email) {
+            const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return re.test(email);
+        }
+
+        // Event listeners
         document.addEventListener('DOMContentLoaded', function() {
             // Máscara para telefone
             const telefoneInput = document.getElementById('edit_telefone');
@@ -1275,6 +1335,17 @@ $stats = $stats_stmt->fetch();
                 e.target.value = value;
             });
 
+            // Validação em tempo real do email
+            const emailInput = document.getElementById('edit_email');
+            emailInput.addEventListener('input', function(e) {
+                const email = e.target.value;
+                if (email.length > 0 && !validateEmail(email)) {
+                    e.target.style.borderColor = '#dc3545';
+                } else {
+                    e.target.style.borderColor = '#ddd';
+                }
+            });
+
             // Auto-hide mensagens de sucesso
             const messages = document.querySelectorAll('.message.success');
             messages.forEach(function(msg) {
@@ -1288,6 +1359,7 @@ $stats = $stats_stmt->fetch();
         document.querySelector('#modalEdit form').addEventListener('submit', function(e) {
             const telefone = document.getElementById('edit_telefone').value;
             const data = document.getElementById('edit_data_nascimento').value;
+            const email = document.getElementById('edit_email').value.trim();
             
             // Validar telefone
             if (!/^\(\d{2}\) \d{4,5}-\d{4}$/.test(telefone)) {
@@ -1300,6 +1372,13 @@ $stats = $stats_stmt->fetch();
             if (!/^\d{2}\/\d{2}\/\d{4}$/.test(data)) {
                 e.preventDefault();
                 alert('Por favor, digite uma data válida no formato DD/MM/AAAA');
+                return false;
+            }
+
+            // Validar email se fornecido
+            if (email && !validateEmail(email)) {
+                e.preventDefault();
+                alert('Por favor, digite um email válido');
                 return false;
             }
         });
@@ -1316,22 +1395,13 @@ $stats = $stats_stmt->fetch();
             }
         });
 
-        // Auto-refresh da página a cada 5 minutos
-        setTimeout(function() {
-            if (confirm('Novos cadastros podem ter sido adicionados. Atualizar página automaticamente?')) {
-                location.reload();
-            }
-        }, 300000);
-
         // Atalhos de teclado
         document.addEventListener('keydown', function(e) {
-            // ESC para fechar modals
             if (e.key === 'Escape') {
                 fecharModal();
                 fecharModalView();
             }
             
-            // Ctrl+P para imprimir (quando modal de visualização estiver aberto)
             if (e.ctrlKey && e.key === 'p' && document.getElementById('modalView').classList.contains('show')) {
                 e.preventDefault();
                 imprimirCadastro();
