@@ -821,23 +821,23 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
         }
 
         .calendario-widget {
-            background: linear-gradient(135deg, #28a745, #20c997);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: block;
-            box-shadow: 0 2px 10px rgba(40, 167, 69, 0.3);
-        }
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: block;
+    box-shadow: 0 2px 10px rgba(40, 167, 69, 0.3);
+}
 
-        .calendario-widget:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.4);
-            color: white;
-            text-decoration: none;
-        }
+.calendario-widget:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(40, 167, 69, 0.4);
+    color: white;
+    text-decoration: none;
+}
 
     </style>
 </head>
@@ -869,6 +869,10 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
                 <div class="stat-number"><?php echo $stats['ativos']; ?></div>
                 <div>Cadastros Ativos</div>
             </div>
+<!--             <div class="stat-card">
+                <div class="stat-number"><?php echo $stats['com_email']; ?></div>
+                <div>Com Email</div> 
+            </div> -->
             <div class="stat-card">
                 <div class="stat-number"><?php echo $stats['hoje']; ?></div>
                 <div>Cadastros Hoje</div>
@@ -886,27 +890,30 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
              </a>
         </div>
 
+
         <?php if ($agendamentos_hoje_info['total_hoje'] > 0): ?>
-        <div style="background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 8px; margin-bottom: 20px; animation: pulse 2s infinite;">
-            <h3 style="margin: 0 0 10px 0; display: flex; align-items: center; gap: 10px;">
-                🚨 Agendamentos de Hoje
-                <span style="background: #856404; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8em;">
-                    <?php echo $agendamentos_hoje_info['total_hoje']; ?>
+    <div style="background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 8px; margin-bottom: 20px; animation: pulse 2s infinite;">
+        <h3 style="margin: 0 0 10px 0; display: flex; align-items: center; gap: 10px;">
+            🚨 Agendamentos de Hoje
+            <span style="background: #856404; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8em;">
+                <?php echo $agendamentos_hoje_info['total_hoje']; ?>
+            </span>
+            <?php if ($agendamentos_hoje_info['urgentes_hoje'] > 0): ?>
+                <span style="background: #dc3545; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8em;">
+                    🔴 <?php echo $agendamentos_hoje_info['urgentes_hoje']; ?> urgente(s)
                 </span>
-                <?php if ($agendamentos_hoje_info['urgentes_hoje'] > 0): ?>
-                    <span style="background: #dc3545; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8em;">
-                        🔴 <?php echo $agendamentos_hoje_info['urgentes_hoje']; ?> urgente(s)
-                    </span>
-                <?php endif; ?>
-            </h3>
-            <p style="margin: 0;">
-                Você tem <strong><?php echo $agendamentos_hoje_info['total_hoje']; ?> agendamento(s)</strong> programado(s) para hoje.
-                <a href="calendario.php" style="color: #003366; font-weight: bold; text-decoration: none; margin-left: 10px;">
-                    📅 Ver Calendário →
-                </a>
-            </p>
-        </div>
-        <?php endif; ?>
+            <?php endif; ?>
+        </h3>
+        <p style="margin: 0;">
+            Você tem <strong><?php echo $agendamentos_hoje_info['total_hoje']; ?> agendamento(s)</strong> programado(s) para hoje.
+            <a href="calendario.php" style="color: #003366; font-weight: bold; text-decoration: none; margin-left: 10px;">
+                📅 Ver Calendário →
+            </a>
+        </p>
+    </div>
+<?php endif; ?>
+
+
 
         <!-- Filtros -->
         <div class="filters">
@@ -941,9 +948,6 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
                             <button type="submit" class="btn btn-primary">🔍 Filtrar</button>
                             <a href="<?php echo $_SERVER['PHP_SELF']; ?>" class="btn btn-secondary">🗑️ Limpar</a>
                             <button type="button" class="btn btn-success" onclick="atualizarPagina()">🔄 Atualizar</button>
-                            <button type="button" class="btn" onclick="copiarTodosParaExcel()" style="background: #28a745; color: white;" title="Copiar todos os dados para Excel">
-                                📋 Copiar Todos
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -984,10 +988,10 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
                                 <td><?php echo htmlspecialchars($cadastro['cidade']); ?></td>
                                 <td><?php echo htmlspecialchars($cadastro['cargo']); ?></td>
                                 <td>
-                                    <strong><?php echo htmlspecialchars($cadastro['telefone']); ?></strong><br>
+                                    <strong><!-- 📱 --></strong> <?php echo htmlspecialchars($cadastro['telefone']); ?><br>
                                     <div class="email-display">
                                         <?php if (!empty($cadastro['email'])): ?>
-                                            <?php echo htmlspecialchars($cadastro['email']); ?>
+                                            <!-- 📧 --> <?php echo htmlspecialchars($cadastro['email']); ?>
                                         <?php endif; ?>
                                     </div>
                                 </td>
@@ -1066,9 +1070,6 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
             <div class="view-header">
                 <h3>📋 Detalhes do Cadastro</h3>
                 <div class="view-actions">
-                    <button type="button" class="btn" onclick="copiarParaExcel()" style="background: #28a745; color: white;" title="Copiar dados para Excel">
-                        📋 Copiar Excel
-                    </button>
                     <button type="button" class="btn-print" onclick="imprimirCadastro()">🖨️ Imprimir</button>
                     <button type="button" class="btn-close-view" onclick="fecharModalView()">✖️ Fechar</button>
                 </div>
@@ -1078,25 +1079,25 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
                 <div class="info-section">
                     <div class="section-title">👤 Dados Pessoais</div>
                     <div class="info-grid">
-                        <div class="info-item" style="background: #e7f3ff; border-left: 4px solid #28a745;">
+                        <div class="info-item">
                             <div class="info-label">Nome Completo</div>
-                            <div class="info-value" id="view_nome" style="font-weight: bold; color: #28a745;">-</div>
+                            <div class="info-value" id="view_nome">-</div>
                         </div>
                         <div class="info-item">
                             <div class="info-label">Data de Nascimento</div>
                             <div class="info-value" id="view_nascimento">-</div>
                         </div>
-                        <div class="info-item" style="background: #e7f3ff; border-left: 4px solid #28a745;">
+                        <div class="info-item">
                             <div class="info-label">Cidade</div>
-                            <div class="info-value" id="view_cidade" style="font-weight: bold; color: #28a745;">-</div>
+                            <div class="info-value" id="view_cidade">-</div>
                         </div>
                         <div class="info-item">
                             <div class="info-label">Cargo/Profissão</div>
                             <div class="info-value" id="view_cargo">-</div>
                         </div>
-                        <div class="info-item" style="background: #e7f3ff; border-left: 4px solid #28a745;">
+                        <div class="info-item">
                             <div class="info-label">Telefone</div>
-                            <div class="info-value" id="view_telefone" style="font-weight: bold; color: #28a745;">-</div>
+                            <div class="info-value" id="view_telefone">-</div>
                         </div>
                         <div class="info-item">
                             <div class="info-label">Email</div>
@@ -1108,10 +1109,6 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
                                 <span class="status-display" id="view_status">-</span>
                             </div>
                         </div>
-                    </div>
-                    
-                    <div style="background: #fff3cd; padding: 12px; border-radius: 5px; border-left: 4px solid #ffc107; font-size: 0.9em; color: #856404; margin-top: 15px;">
-                        📋 <strong>Para Excel:</strong> Os campos destacados em azul (Nome, Cidade, Telefone) serão copiados quando clicar em "Copiar Excel"
                     </div>
                 </div>
 
@@ -1235,79 +1232,6 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
         // Armazenar dados dos cadastros para o modal
         const cadastrosData = <?php echo json_encode($cadastros, JSON_HEX_QUOT | JSON_HEX_APOS); ?>;
 
-        // Variável global para armazenar ID do cadastro sendo visualizado
-        let cadastroAtualVisualizacao = null;
-
-        // Função para copiar dados do cadastro atual para Excel
-        function copiarParaExcel() {
-            const nome = document.getElementById('view_nome').textContent;
-            const cidade = document.getElementById('view_cidade').textContent;
-            const telefone = document.getElementById('view_telefone').textContent;
-            
-            // Criar texto separado por TAB para colar no Excel
-            const textoParaCopiar = `${nome}\t${cidade}\t${telefone}`;
-            
-            // Copiar para clipboard
-            navigator.clipboard.writeText(textoParaCopiar).then(function() {
-                // Mostrar confirmação
-                const btn = event.target;
-                const textoOriginal = btn.innerHTML;
-                btn.innerHTML = '✅ Copiado!';
-                btn.style.background = '#28a745';
-                
-                setTimeout(() => {
-                    btn.innerHTML = textoOriginal;
-                    btn.style.background = '#28a745';
-                }, 2000);
-                
-                // Mostrar instruções
-                alert('✅ Dados copiados!\n\n📋 Cole no Excel:\n1. Abra o Excel\n2. Selecione a célula A1 (ou onde desejar)\n3. Pressione Ctrl+V\n\nOs dados serão colados em 3 colunas:\nA: Nome | B: Cidade | C: Telefone');
-            }).catch(function(err) {
-                // Fallback para navegadores mais antigos
-                const textArea = document.createElement('textarea');
-                textArea.value = textoParaCopiar;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                
-                alert('✅ Dados copiados para a área de transferência!\n\nCole no Excel com Ctrl+V');
-            });
-        }
-
-        // Função para copiar todos os cadastros filtrados
-        function copiarTodosParaExcel() {
-            if (!confirm('Deseja copiar todos os cadastros filtrados?\n\nIsso copiará NOME, CIDADE e TELEFONE de todos os registros visíveis na tela.')) {
-                return;
-            }
-            
-            // Coletar dados de todos os cadastros visíveis
-            let textoCompleto = '';
-            
-            // Adicionar cabeçalho
-            //textoCompleto += 'NOME COMPLETO\tCIDADE\tTELEFONE\n';
-            
-            // Percorrer cadastros da página atual
-            cadastrosData.forEach(cadastro => {
-                textoCompleto += `${cadastro.nome}\t${cadastro.cidade}\t${cadastro.telefone}\n`;
-            });
-            
-            // Copiar para clipboard
-            navigator.clipboard.writeText(textoCompleto).then(function() {
-                //alert(`✅ ${cadastrosData.length} registros copiados!\n\n📋 Cole no Excel:\n1. Abra o Excel\n2. Selecione a célula A1\n3. Pressione Ctrl+V\n\nOs dados serão organizados em colunas automaticamente.`);
-            }).catch(function(err) {
-                // Fallback
-                const textArea = document.createElement('textarea');
-                textArea.value = textoCompleto;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                
-                alert('✅ Dados copiados! Cole no Excel com Ctrl+V');
-            });
-        }
-
         // Função para visualizar cadastro
         function verCadastro(id) {
             console.log('Visualizando cadastro ID:', id);
@@ -1318,9 +1242,6 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
                 alert('Cadastro não encontrado!');
                 return;
             }
-
-            // Armazenar globalmente para exportação
-            cadastroAtualVisualizacao = cadastro;
 
             // Preencher dados pessoais
             document.getElementById('view_nome').textContent = cadastro.nome;
@@ -1560,7 +1481,6 @@ $proximos_agendamentos_info = $proximos_agendamentos_stmt->fetch();
         });
 
         console.log('Dashboard carregado com sucesso! Cadastros:', cadastrosData.length);
-        console.log('📋 Funcionalidade de cópia para Excel ativada!');
     </script>
 </body>
 </html>
