@@ -1,5 +1,5 @@
 <?php
-// verificar_duplicata.php - Sistema para verificar e prevenir cadastros duplicados
+// verificar_duplicata.php - Sistema RIGOROSO para prevenir cadastros duplicados por TELEFONE OU EMAIL
 
 header('Content-Type: application/json');
 require_once 'config.php';
@@ -15,9 +15,8 @@ $input = json_decode(file_get_contents('php://input'), true);
 $nome = sanitizeInput($input['nome'] ?? '');
 $telefone = sanitizeInput($input['telefone'] ?? '');
 $email = sanitizeInput($input['email'] ?? '');
-$data_nascimento = sanitizeInput($input['data_nascimento'] ?? '');
 
-if (empty($nome) || empty($telefone)) {
+if (empty($telefone)) {
     echo json_encode(['duplicata' => false]);
     exit;
 }
@@ -26,122 +25,144 @@ try {
     $db = new Database();
     $pdo = $db->getConnection();
     
-    // Verificar duplicatas por diferentes critérios
-    $duplicatas = [];
+    // Normalizar telefone (remover formatação)
+    $telefone_limpo = preg_replace('/\D/', '', $telefone);
     
-    // 1. Verificar por telefone (mais confiável)
-    $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, telefone, email, data_cadastro, status FROM cadastros WHERE telefone = ? AND status = 'ativo'");
-    $stmt->execute([$telefone]);
-    $cadastro_telefone = $stmt->fetch();
+    // VERIFICAÇÃO RIGOROSA 1: Buscar por telefone exato (com e sem formatação)
+    $stmt = $pdo->prepare("
+        SELECT id, nome, cidade, cargo, telefone, email, data_cadastro, status 
+        FROM cadastros 
+        WHERE (telefone = ? OR REPLACE(REPLACE(REPLACE(REPLACE(telefone, '(', ''), ')', ''), ' ', ''), '-', '') = ?)
+        AND status = 'ativo'
+        LIMIT 1
+    ");
+    $stmt->execute([$telefone, $telefone_limpo]);
+    $cadastro_por_telefone = $stmt->fetch();
     
-    if ($cadastro_telefone) {
-        $duplicatas[] = [
-            'tipo' => 'telefone',
-            'criterio' => 'Mesmo telefone',
-            'cadastro' => $cadastro_telefone,
-            'confiabilidade' => 'alta'
-        ];
+    if ($cadastro_por_telefone) {
+        // TELEFONE JÁ EXISTE - BLOQUEAR CADASTRO
+        echo json_encode([
+            'duplicata' => true,
+            'bloqueado' => true,
+            'motivo' => 'telefone_existente',
+            'campo_duplicado' => 'telefone',
+            'mensagem' => 'Este número de telefone já está cadastrado no sistema.',
+            'cadastro_existente' => [
+                'nome' => $cadastro_por_telefone['nome'],
+                'cidade' => $cadastro_por_telefone['cidade'],
+                'cargo' => $cadastro_por_telefone['cargo'],
+                'telefone' => $cadastro_por_telefone['telefone'],
+                'email' => $cadastro_por_telefone['email'] ?: 'Não informado',
+                'data_cadastro' => date('d/m/Y', strtotime($cadastro_por_telefone['data_cadastro']))
+            ]
+        ]);
+        
+        // Log da tentativa de duplicata
+        logActivity('cadastro_duplicado_bloqueado', "TELEFONE DUPLICADO - Telefone: $telefone - Tentativa: $nome - Existente: {$cadastro_por_telefone['nome']}");
+        exit;
     }
     
-    // 2. Verificar por email (se fornecido)
+    // VERIFICAÇÃO RIGOROSA 2: Buscar por email (se fornecido e não vazio)
+    if (!empty($email) && strlen(trim($email)) > 0) {
+        $email_limpo = strtolower(trim($email));
+        
+        $stmt = $pdo->prepare("
+            SELECT id, nome, cidade, cargo, telefone, email, data_cadastro, status 
+            FROM cadastros 
+            WHERE LOWER(TRIM(email)) = ? AND email IS NOT NULL AND email != ''
+            AND status = 'ativo'
+            LIMIT 1
+        ");
+        $stmt->execute([$email_limpo]);
+        $cadastro_por_email = $stmt->fetch();
+        
+        if ($cadastro_por_email) {
+            // EMAIL JÁ EXISTE - BLOQUEAR CADASTRO
+            echo json_encode([
+                'duplicata' => true,
+                'bloqueado' => true,
+                'motivo' => 'email_existente',
+                'campo_duplicado' => 'email',
+                'mensagem' => 'Este endereço de email já está cadastrado no sistema.',
+                'cadastro_existente' => [
+                    'nome' => $cadastro_por_email['nome'],
+                    'cidade' => $cadastro_por_email['cidade'],
+                    'cargo' => $cadastro_por_email['cargo'],
+                    'telefone' => $cadastro_por_email['telefone'],
+                    'email' => $cadastro_por_email['email'],
+                    'data_cadastro' => date('d/m/Y', strtotime($cadastro_por_email['data_cadastro']))
+                ]
+            ]);
+            
+            // Log da tentativa de duplicata
+            logActivity('cadastro_duplicado_bloqueado', "EMAIL DUPLICADO - Email: $email - Telefone tentativa: $telefone - Nome tentativa: $nome - Existente: {$cadastro_por_email['nome']} ({$cadastro_por_email['telefone']})");
+            exit;
+        }
+    }
+    
+    // Se chegou até aqui, não há duplicata por telefone
+    // Verificar outras possíveis duplicatas como aviso (sem bloquear)
+    $avisos = [];
+    
+    // Verificar por email (apenas aviso)
     if (!empty($email)) {
-        $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, telefone, email, data_cadastro, status FROM cadastros WHERE email = ? AND status = 'ativo'");
+        $stmt = $pdo->prepare("SELECT nome, telefone FROM cadastros WHERE email = ? AND status = 'ativo' LIMIT 1");
         $stmt->execute([$email]);
         $cadastro_email = $stmt->fetch();
         
         if ($cadastro_email) {
-            $duplicatas[] = [
-                'tipo' => 'email',
-                'criterio' => 'Mesmo email',
-                'cadastro' => $cadastro_email,
-                'confiabilidade' => 'alta'
+            $avisos[] = [
+                'tipo' => 'email_existente',
+                'mensagem' => 'Este email já está sendo usado por: ' . $cadastro_email['nome'] . ' (' . $cadastro_email['telefone'] . ')'
             ];
         }
     }
     
-    // 3. Verificar por nome completo + data nascimento
-    if (!empty($data_nascimento)) {
-        $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, telefone, email, data_cadastro, status FROM cadastros WHERE nome = ? AND data_nascimento = ? AND status = 'ativo'");
-        $stmt->execute([$nome, $data_nascimento]);
-        $cadastro_nome_data = $stmt->fetch();
+    // Verificar nomes muito similares (apenas aviso)
+    if (!empty($nome) && strlen($nome) > 3) {
+        $stmt = $pdo->prepare("
+            SELECT nome, telefone, cidade 
+            FROM cadastros 
+            WHERE SOUNDEX(nome) = SOUNDEX(?) 
+            AND status = 'ativo' 
+            AND nome != ?
+            LIMIT 3
+        ");
+        $stmt->execute([$nome, $nome]);
+        $nomes_similares = $stmt->fetchAll();
         
-        if ($cadastro_nome_data) {
-            $duplicatas[] = [
-                'tipo' => 'nome_data',
-                'criterio' => 'Mesmo nome e data de nascimento',
-                'cadastro' => $cadastro_nome_data,
-                'confiabilidade' => 'alta'
-            ];
-        }
-    }
-    
-    // 4. Verificar nomes similares (soundex para nomes parecidos)
-    $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, telefone, email, data_cadastro, status FROM cadastros WHERE SOUNDEX(nome) = SOUNDEX(?) AND status = 'ativo' AND nome != ?");
-    $stmt->execute([$nome, $nome]);
-    $cadastros_similares = $stmt->fetchAll();
-    
-    foreach ($cadastros_similares as $cadastro_similar) {
-        // Calcular similaridade usando Levenshtein
-        $similaridade = 1 - (levenshtein(strtolower($nome), strtolower($cadastro_similar['nome'])) / max(strlen($nome), strlen($cadastro_similar['nome'])));
-        
-        if ($similaridade > 0.8) { // 80% de similaridade
-            $duplicatas[] = [
-                'tipo' => 'nome_similar',
-                'criterio' => 'Nome muito similar (' . round($similaridade * 100) . '% parecido)',
-                'cadastro' => $cadastro_similar,
-                'confiabilidade' => 'media',
-                'similaridade' => $similaridade
-            ];
-        }
-    }
-    
-    // 5. Verificar por nome + cidade (menos confiável)
-    if (!empty($input['cidade'])) {
-        $cidade = sanitizeInput($input['cidade']);
-        $stmt = $pdo->prepare("SELECT id, nome, cidade, cargo, telefone, email, data_cadastro, status FROM cadastros WHERE nome = ? AND cidade = ? AND status = 'ativo'");
-        $stmt->execute([$nome, $cidade]);
-        $cadastro_nome_cidade = $stmt->fetch();
-        
-        if ($cadastro_nome_cidade && !$cadastro_telefone && !$cadastro_email && !$cadastro_nome_data) {
-            $duplicatas[] = [
-                'tipo' => 'nome_cidade',
-                'criterio' => 'Mesmo nome e cidade',
-                'cadastro' => $cadastro_nome_cidade,
-                'confiabilidade' => 'baixa'
-            ];
-        }
-    }
-    
-    if (!empty($duplicatas)) {
-        // Remover duplicatas (mesmo cadastro encontrado por diferentes critérios)
-        $cadastros_unicos = [];
-        $ids_processados = [];
-        
-        foreach ($duplicatas as $dup) {
-            $id = $dup['cadastro']['id'];
-            if (!in_array($id, $ids_processados)) {
-                $cadastros_unicos[] = $dup;
-                $ids_processados[] = $id;
+        foreach ($nomes_similares as $similar) {
+            $similaridade = 1 - (levenshtein(strtolower($nome), strtolower($similar['nome'])) / max(strlen($nome), strlen($similar['nome'])));
+            
+            if ($similaridade > 0.85) { // 85% de similaridade
+                $avisos[] = [
+                    'tipo' => 'nome_similar',
+                    'mensagem' => 'Nome similar encontrado: ' . $similar['nome'] . ' (' . $similar['telefone'] . ') - ' . $similar['cidade']
+                ];
             }
         }
-        
-        // Ordenar por confiabilidade (alta -> media -> baixa)
-        usort($cadastros_unicos, function($a, $b) {
-            $ordem = ['alta' => 3, 'media' => 2, 'baixa' => 1];
-            return $ordem[$b['confiabilidade']] - $ordem[$a['confiabilidade']];
-        });
-        
+    }
+    
+    // Retornar resultado
+    if (!empty($avisos)) {
         echo json_encode([
-            'duplicata' => true,
-            'duplicatas' => $cadastros_unicos,
-            'total' => count($cadastros_unicos)
+            'duplicata' => false,
+            'avisos' => $avisos,
+            'permitir_cadastro' => true
         ]);
     } else {
-        echo json_encode(['duplicata' => false]);
+        echo json_encode([
+            'duplicata' => false,
+            'permitir_cadastro' => true
+        ]);
     }
     
 } catch (Exception $e) {
     error_log("Erro ao verificar duplicata: " . $e->getMessage());
-    echo json_encode(['duplicata' => false, 'erro' => 'Erro interno']);
+    echo json_encode([
+        'duplicata' => false, 
+        'erro' => 'Erro interno na verificação',
+        'permitir_cadastro' => true
+    ]);
 }
 ?>

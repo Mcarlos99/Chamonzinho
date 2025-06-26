@@ -12,7 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $cidade = sanitizeInput($_POST['cidade']);
         $cargo = sanitizeInput($_POST['cargo']);
         $telefone = sanitizeInput($_POST['telefone']);
-        $email = sanitizeInput($_POST['email']);
+        $email = sanitizeInput($_POST['email']); // Novo campo email
         $data_nascimento_input = sanitizeInput($_POST['nascimento']);
         $observacoes = sanitizeInput($_POST['observacoes']);
         
@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $data_nascimento = $partes[2] . '-' . $partes[1] . '-' . $partes[0];
         }
         
-        // Validações básicas
+        // Validações
         if (empty($nome) || empty($cidade) || empty($cargo) || empty($telefone) || empty($data_nascimento)) {
             throw new Exception('Todos os campos obrigatórios devem ser preenchidos.');
         }
@@ -37,58 +37,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             throw new Exception('Formato de email inválido.');
         }
         
-        // VERIFICAÇÃO RIGOROSA DE DUPLICATA POR TELEFONE OU EMAIL
+        // Conectar ao banco e inserir dados
         $db = new Database();
         $pdo = $db->getConnection();
         
-        // Normalizar telefone
-        $telefone_limpo = preg_replace('/\D/', '', $telefone);
-        
-        // 1. Verificar se telefone já existe
-        $stmt = $pdo->prepare("
-            SELECT id, nome, cidade, cargo, telefone, email, data_cadastro 
-            FROM cadastros 
-            WHERE (telefone = ? OR REPLACE(REPLACE(REPLACE(REPLACE(telefone, '(', ''), ')', ''), ' ', ''), '-', '') = ?)
-            AND status = 'ativo'
-            LIMIT 1
-        ");
-        $stmt->execute([$telefone, $telefone_limpo]);
-        $cadastro_por_telefone = $stmt->fetch();
-        
-        if ($cadastro_por_telefone) {
-            // TELEFONE JÁ EXISTE - BLOQUEAR CADASTRO
-            $data_cadastro_existente = date('d/m/Y', strtotime($cadastro_por_telefone['data_cadastro']));
-            
-            logActivity('cadastro_duplicado_bloqueado', "TELEFONE DUPLICADO BLOQUEADO - Telefone: $telefone - Tentativa: $nome ($cidade) - Existente: {$cadastro_por_telefone['nome']} ({$cadastro_por_telefone['cidade']})");
-            
-            throw new Exception("⚠️ CADASTRO NÃO PERMITIDO ⚠️\n\nEste número de telefone ({$telefone}) já está cadastrado no sistema.\n\n📋 Cadastro existente:\n• Nome: {$cadastro_por_telefone['nome']}\n• Cidade: {$cadastro_por_telefone['cidade']}\n• Cargo: {$cadastro_por_telefone['cargo']}\n• Email: " . ($cadastro_por_telefone['email'] ?: 'Não informado') . "\n• Cadastrado em: {$data_cadastro_existente}\n\n💡 Se você precisa atualizar seus dados, entre em contato conosco.");
-        }
-        
-        // 2. Verificar se email já existe (se fornecido)
-        if (!empty($email)) {
-            $email_limpo = strtolower(trim($email));
-            
-            $stmt = $pdo->prepare("
-                SELECT id, nome, cidade, cargo, telefone, email, data_cadastro 
-                FROM cadastros 
-                WHERE LOWER(TRIM(email)) = ? AND email IS NOT NULL AND email != ''
-                AND status = 'ativo'
-                LIMIT 1
-            ");
-            $stmt->execute([$email_limpo]);
-            $cadastro_por_email = $stmt->fetch();
-            
-            if ($cadastro_por_email) {
-                // EMAIL JÁ EXISTE - BLOQUEAR CADASTRO
-                $data_cadastro_existente = date('d/m/Y', strtotime($cadastro_por_email['data_cadastro']));
-                
-                logActivity('cadastro_duplicado_bloqueado', "EMAIL DUPLICADO BLOQUEADO - Email: $email - Telefone tentativa: $telefone - Nome tentativa: $nome ($cidade) - Existente: {$cadastro_por_email['nome']} ({$cadastro_por_email['telefone']})");
-                
-                throw new Exception("⚠️ CADASTRO NÃO PERMITIDO ⚠️\n\nEste endereço de email ({$email}) já está cadastrado no sistema.\n\n📋 Cadastro existente:\n• Nome: {$cadastro_por_email['nome']}\n• Cidade: {$cadastro_por_email['cidade']}\n• Cargo: {$cadastro_por_email['cargo']}\n• Telefone: {$cadastro_por_email['telefone']}\n• Cadastrado em: {$data_cadastro_existente}\n\n💡 Talvez você já se cadastrou antes, ou alguém da sua família usou este email.\n💡 Se você precisa atualizar seus dados, entre em contato conosco.");
-            }
-        }
-        
-        // Se chegou até aqui, pode prosseguir com o cadastro
         $stmt = $pdo->prepare("INSERT INTO cadastros (nome, cidade, cargo, telefone, email, data_nascimento, observacoes, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         
         $result = $stmt->execute([
@@ -107,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $messageType = 'success';
             
             // Log da ação
-            logActivity('cadastro', "Novo cadastro aprovado: $nome de $cidade - Telefone: $telefone");
+            logActivity('cadastro', "Novo cadastro: $nome de $cidade");
         } else {
             throw new Exception('Erro ao salvar cadastro.');
         }
@@ -208,7 +160,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             border-radius: 8px;
             margin-bottom: 20px;
             font-weight: bold;
-            white-space: pre-line;
         }
 
         .message.success {
@@ -221,7 +172,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             background: #f8d7da;
             color: #721c24;
             border: 1px solid #f5c6cb;
-            white-space: pre-line;
         }
 
         .form-group {
@@ -296,12 +246,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             transform: translateY(-1px);
         }
 
-        .btn-submit:disabled {
-            background: #6c757d;
-            cursor: not-allowed;
-            transform: none;
-        }
-
         .form-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -312,73 +256,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
             gap: 20px;
-        }
-
-        /* Alertas de duplicata */
-        .warning-box {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            color: #856404;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
-        }
-
-        .warning-box.show {
-            display: block;
-            animation: slideDown 0.5s ease-out;
-        }
-
-        .error-box {
-            background: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
-        }
-
-        .error-box.show {
-            display: block;
-            animation: slideDown 0.5s ease-out;
-        }
-
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateY(-20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 10000;
-        }
-
-        .loading-overlay.show {
-            display: flex;
-        }
-
-        .loading-content {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            text-align: center;
-            animation: pulse 1s ease-in-out infinite;
         }
 
         @media (max-width: 768px) {
@@ -396,6 +273,67 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
 
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .warning-box.show {
+            display: block;
+        }
+
+        .duplicata-item {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
+            border-left: 4px solid #ffc107;
+        }
+
+        .duplicata-item.alta {
+            border-left-color: #dc3545;
+        }
+
+        .duplicata-item.media {
+            border-left-color: #ffc107;
+        }
+
+        .duplicata-item.baixa {
+            border-left-color: #28a745;
+        }
+
+        .btn-duplicata {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8em;
+            margin: 5px 5px 0 0;
+        }
+
+        .btn-duplicata:hover {
+            background: #5a6268;
+        }
+
+        .btn-continuar {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
         .admin-link {
             text-align: center;
             margin-top: 20px;
@@ -403,12 +341,28 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             border-top: 1px solid #e0e0e0;
         }
 
-        .has-icon {
-            position: relative;
+        .form-check {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #e7f3ff;
+            border-radius: 8px;
+            border-left: 4px solid #0066cc;
+            display: none;
         }
 
-        .has-icon input {
-            padding-right: 50px;
+        .form-check.show {
+            display: block;
+        }
+
+        .form-check input[type="checkbox"] {
+            margin-right: 10px;
+            transform: scale(1.2);
+        }
+
+        .form-check label {
+            color: #003366;
+            font-weight: bold;
+            cursor: pointer;
         }
 
         .email-icon {
@@ -420,17 +374,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             font-size: 1.1em;
             pointer-events: none;
         }
+
+        .form-group.has-icon {
+            position: relative;
+        }
+
+        .form-group.has-icon input {
+            padding-right: 50px;
+        }
     </style>
 </head>
 <body>
-    <!-- Overlay de Loading -->
-    <div id="loadingOverlay" class="loading-overlay">
-        <div class="loading-content">
-            <h3>🔍 Verificando dados...</h3>
-            <p>Aguarde enquanto verificamos se seus dados já estão cadastrados.</p>
-        </div>
-    </div>
-
     <div class="container">
         <div class="header">
             <h1>Chamonzinho</h1>
@@ -444,64 +398,68 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 </div>
             <?php endif; ?>
 
-            <!-- Aviso de Telefone/Email Duplicado -->
-            <div id="errorDuplicata" class="error-box">
-                <h4 id="errorTitulo">❌ CADASTRO NÃO PERMITIDO</h4>
-                <p id="errorTexto"></p>
-                <p><strong>Não é possível fazer um novo cadastro com estes dados.</strong></p>
-                <p>Se você precisa atualizar seus dados, entre em contato conosco.</p>
+            <!-- Aviso de Duplicata -->
+            <div id="warningDuplicata" class="warning-box">
+                <h4>⚠️ Possível Cadastro Duplicado Encontrado</h4>
+                <p>Encontramos cadastro(s) que podem ser seus:</p>
+                <div id="listaDuplicatas"></div>
+                <div style="margin-top: 15px;">
+                    <button type="button" class="btn-continuar" onclick="continuarCadastro()">✅ Continuar Mesmo Assim</button>
+                    <button type="button" class="btn-cancelar" onclick="cancelarCadastro()">❌ Cancelar Cadastro</button>
+                </div>
             </div>
 
-            <!-- Avisos de Duplicata -->
-            <div id="warningDuplicata" class="warning-box">
-                <h4>⚠️ Atenção - Dados Similares Encontrados</h4>
-                <div id="listaDuplicatas"></div>
-                <p><strong>Você pode continuar o cadastro, mas verifique se seus dados estão corretos.</strong></p>
+            <!-- Checkbox de Confirmação -->
+            <div id="confirmacaoDuplicata" class="form-check">
+                <input type="checkbox" id="confirmarDuplicata" name="confirmar_duplicata">
+                <label for="confirmarDuplicata">
+                    ✅ Confirmo que já verifiquei os dados acima e desejo prosseguir com um novo cadastro
+                </label>
             </div>
             
-            <form method="POST" action="" id="formCadastro">
+            <form method="POST" action="">
                 <div class="form-row">
                     <div class="form-group">
                         <label for="nome">Nome Completo *</label>
-                        <input type="text" id="nome" name="nome" required maxlength="255" value="<?php echo htmlspecialchars($_POST['nome'] ?? ''); ?>">
+                        <input type="text" id="nome" name="nome" required maxlength="255">
                     </div>
                     
                     <div class="form-group">
                         <label for="cidade">Cidade *</label>
-                        <input type="text" id="cidade" name="cidade" required maxlength="100" value="<?php echo htmlspecialchars($_POST['cidade'] ?? ''); ?>">
+                        <input type="text" id="cidade" name="cidade" required maxlength="100">
                     </div>
                 </div>
                 
                 <div class="form-row-three">
                     <div class="form-group">
                         <label for="cargo">Cargo *</label>
-                        <input type="text" id="cargo" name="cargo" required maxlength="100" value="<?php echo htmlspecialchars($_POST['cargo'] ?? ''); ?>">
+                        <input type="text" id="cargo" name="cargo" required maxlength="100">
                     </div>
                     
                     <div class="form-group">
                         <label for="telefone">Telefone *</label>
-                        <input type="tel" id="telefone" name="telefone" required maxlength="15" placeholder="(00) 00000-0000" value="<?php echo htmlspecialchars($_POST['telefone'] ?? ''); ?>">
+                        <input type="tel" id="telefone" name="telefone" required maxlength="15" placeholder="(00) 00000-0000">
                     </div>
 
                     <div class="form-group has-icon">
                         <label for="email">Email <span class="optional">(opcional)</span></label>
-                        <input type="email" id="email" name="email" maxlength="255" placeholder="seu@email.com" value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>">
+                        <input type="email" id="email" name="email" maxlength="255" placeholder="seu@email.com">
                         <!-- <span class="email-icon">📧</span> -->
                     </div>
                 </div>
                 
                 <div class="form-group">
                     <label for="nascimento">Data de Nascimento *</label>
-                    <input type="text" id="nascimento" name="nascimento" required placeholder="DD/MM/AAAA" pattern="\d{2}/\d{2}/\d{4}" maxlength="10" value="<?php echo htmlspecialchars($_POST['nascimento'] ?? ''); ?>">
+                    <input type="text" id="nascimento" name="nascimento" required placeholder="DD/MM/AAAA" pattern="\d{2}/\d{2}/\d{4}" maxlength="10">
                 </div>
                 
                 <div class="form-group">
                     <label for="observacoes">Observações</label>
-                    <textarea id="observacoes" name="observacoes" placeholder="Digite suas observações aqui..."><?php echo htmlspecialchars($_POST['observacoes'] ?? ''); ?></textarea>
+                    <textarea id="observacoes" name="observacoes" placeholder="Digite suas observações aqui..."></textarea>
                 </div>
                 
                 <div class="form-group" style="text-align: center;">
-                    <button type="submit" class="btn-submit" id="btnSubmit">Cadastrar</button>
+                    <button type="submit" class="btn-submit">Cadastrar</button>
                 </div>
             </form>
             
@@ -529,21 +487,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     </footer>
 
     <script>
+        let duplicataEncontrada = false;
         let verificacaoRealizada = false;
-        let telefonePermitido = false;
 
-        // Função para verificar duplicatas via AJAX
+        // Função para verificar duplicatas
         async function verificarDuplicatas() {
-            const telefone = document.getElementById('telefone').value.trim();
             const nome = document.getElementById('nome').value.trim();
+            const telefone = document.getElementById('telefone').value.trim();
             const email = document.getElementById('email').value.trim();
+            const nascimento = document.getElementById('nascimento').value.trim();
+            const cidade = document.getElementById('cidade').value.trim();
 
-            if (!telefone || telefone.length < 14) {
+            if (!nome || !telefone) {
                 return false;
             }
-
-            // Mostrar loading
-            document.getElementById('loadingOverlay').classList.add('show');
 
             try {
                 const response = await fetch('verificar_duplicata.php', {
@@ -554,124 +511,88 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     body: JSON.stringify({
                         nome: nome,
                         telefone: telefone,
-                        email: email
+                        email: email,
+                        data_nascimento: nascimento,
+                        cidade: cidade
                     })
                 });
 
                 const resultado = await response.json();
 
-                // Esconder loading
-                document.getElementById('loadingOverlay').classList.remove('show');
-
-                if (resultado.bloqueado) {
-                    // TELEFONE OU EMAIL BLOQUEADO
-                    mostrarErroDuplicata(resultado);
-                    telefonePermitido = false;
-                    desabilitarFormulario();
+                if (resultado.duplicata) {
+                    mostrarDuplicatas(resultado.duplicatas);
                     return true;
-                } else if (resultado.avisos && resultado.avisos.length > 0) {
-                    // MOSTRAR AVISOS (mas permitir cadastro)
-                    mostrarAvisos(resultado.avisos);
-                    telefonePermitido = true;
-                    return false;
                 } else {
-                    // TUDO OK
-                    limparAvisos();
-                    telefonePermitido = true;
                     return false;
                 }
             } catch (error) {
                 console.error('Erro ao verificar duplicatas:', error);
-                // Esconder loading
-                document.getElementById('loadingOverlay').classList.remove('show');
-                telefonePermitido = true; // Em caso de erro, permitir cadastro
                 return false;
             }
         }
 
-        // Mostrar erro de duplicata (telefone ou email) - bloqueia cadastro
-        function mostrarErroDuplicata(resultado) {
-            const errorBox = document.getElementById('errorDuplicata');
-            const errorTitulo = document.getElementById('errorTitulo');
-            const errorTexto = document.getElementById('errorTexto');
-            
-            const cadastro = resultado.cadastro_existente;
-            const campo = resultado.campo_duplicado;
-            
-            if (campo === 'telefone') {
-                errorTitulo.textContent = '❌ TELEFONE JÁ CADASTRADO';
-                errorTexto.innerHTML = `
-                    Este número <strong>${cadastro.telefone}</strong> já está cadastrado para:<br>
-                    <strong>• Nome:</strong> ${cadastro.nome}<br>
-                    <strong>• Cidade:</strong> ${cadastro.cidade}<br>
-                    <strong>• Cargo:</strong> ${cadastro.cargo}<br>
-                    <strong>• Email:</strong> ${cadastro.email}<br>
-                    <strong>• Cadastrado em:</strong> ${cadastro.data_cadastro}
-                `;
-            } else if (campo === 'email') {
-                errorTitulo.textContent = '❌ EMAIL JÁ CADASTRADO';
-                errorTexto.innerHTML = `
-                    Este email <strong>${cadastro.email}</strong> já está cadastrado para:<br>
-                    <strong>• Nome:</strong> ${cadastro.nome}<br>
-                    <strong>• Cidade:</strong> ${cadastro.cidade}<br>
-                    <strong>• Cargo:</strong> ${cadastro.cargo}<br>
-                    <strong>• Telefone:</strong> ${cadastro.telefone}<br>
-                    <strong>• Cadastrado em:</strong> ${cadastro.data_cadastro}<br>
-
-                `;
-            }
-            
-            errorBox.classList.add('show');
-            errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            
-            // Esconder avisos normais
-            document.getElementById('warningDuplicata').classList.remove('show');
-        }
-
-        // Mostrar avisos de possíveis duplicatas (permite cadastro)
-        function mostrarAvisos(avisos) {
+        // Função para mostrar duplicatas encontradas
+        function mostrarDuplicatas(duplicatas) {
             const warningBox = document.getElementById('warningDuplicata');
             const listaDuplicatas = document.getElementById('listaDuplicatas');
             
-            let html = '<ul>';
-            avisos.forEach(aviso => {
-                html += `<li><strong>${aviso.tipo.replace('_', ' ').toUpperCase()}:</strong> ${aviso.mensagem}</li>`;
+            let html = '';
+            
+            duplicatas.forEach((dup, index) => {
+                const cadastro = dup.cadastro;
+                const dataCadastro = new Date(cadastro.data_cadastro).toLocaleDateString('pt-BR');
+                
+                html += `
+                    <div class="duplicata-item ${dup.confiabilidade}">
+                        <strong>📋 ${dup.criterio}</strong><br>
+                        <strong>Nome:</strong> ${cadastro.nome}<br>
+                        <strong>Cidade:</strong> ${cadastro.cidade}<br>
+                        <strong>Cargo:</strong> ${cadastro.cargo}<br>
+                        <strong>Telefone:</strong> ${cadastro.telefone}<br>
+                        ${cadastro.email ? `<strong>Email:</strong> ${cadastro.email}<br>` : ''}
+                        <strong>Cadastrado em:</strong> ${dataCadastro}<br>
+                        <small style="color: #666;">Confiabilidade: ${dup.confiabilidade.toUpperCase()}</small>
+                    </div>
+                `;
             });
-            html += '</ul>';
             
             listaDuplicatas.innerHTML = html;
             warningBox.classList.add('show');
             
-            // Esconder erro de telefone
-            document.getElementById('errorTelefone').classList.remove('show');
+            // Scroll até o aviso
+            warningBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            duplicataEncontrada = true;
         }
 
-        // Limpar todos os avisos
-        function limparAvisos() {
+        // Função para continuar o cadastro mesmo com duplicata
+        function continuarCadastro() {
             document.getElementById('warningDuplicata').classList.remove('show');
-            document.getElementById('errorDuplicata').classList.remove('show');
-            habilitarFormulario();
+            document.getElementById('confirmacaoDuplicata').classList.add('show');
+            
+            // Scroll até o checkbox
+            document.getElementById('confirmacaoDuplicata').scrollIntoView({ behavior: 'smooth' });
         }
 
-        // Desabilitar formulário
-        function desabilitarFormulario() {
-            const btnSubmit = document.getElementById('btnSubmit');
-            btnSubmit.disabled = true;
-            btnSubmit.textContent = '❌ Cadastro Não Permitido';
-            btnSubmit.style.background = '#dc3545';
-        }
-
-        // Habilitar formulário
-        function habilitarFormulario() {
-            const btnSubmit = document.getElementById('btnSubmit');
-            btnSubmit.disabled = false;
-            btnSubmit.textContent = 'Cadastrar';
-            btnSubmit.style.background = '';
+        // Função para cancelar o cadastro
+        function cancelarCadastro() {
+            document.getElementById('warningDuplicata').classList.remove('show');
+            
+            // Limpar formulário
+            document.querySelector('form').reset();
+            
+            // Scroll para o topo
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            
+            alert('📝 Cadastro cancelado. Você pode tentar novamente com dados diferentes.');
+            
+            duplicataEncontrada = false;
+            verificacaoRealizada = false;
         }
 
         // Verificação automática ao sair do campo telefone
         document.getElementById('telefone').addEventListener('blur', async function() {
-            if (this.value.length >= 14) {
+            if (!verificacaoRealizada && this.value.length >= 14) { // (XX) XXXXX-XXXX
                 verificacaoRealizada = true;
                 await verificarDuplicatas();
             }
@@ -679,69 +600,65 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         // Verificação automática ao sair do campo email
         document.getElementById('email').addEventListener('blur', async function() {
-            const email = this.value.trim();
-            const telefone = document.getElementById('telefone').value.trim();
-            
-            // Se tem email e telefone, verificar
-            if (email.length > 5 && telefone.length >= 14 && validateEmail(email)) {
+            const telefone = document.getElementById('telefone').value;
+            const nome = document.getElementById('nome').value;
+            if (!verificacaoRealizada && this.value.length >= 5 && telefone.length >= 14 && nome.length >= 3) {
                 verificacaoRealizada = true;
                 await verificarDuplicatas();
             }
         });
 
-        // Verificação ao digitar no telefone (para limpar erros quando muda número)
-        document.getElementById('telefone').addEventListener('input', function() {
-            // Se mudou o telefone, permitir nova verificação
-            if (verificacaoRealizada) {
-                verificacaoRealizada = false;
-                telefonePermitido = false;
-                limparAvisos();
-                habilitarFormulario();
-            }
-        });
-
-        // Verificação ao digitar no email (para limpar erros quando muda email)
-        document.getElementById('email').addEventListener('input', function() {
-            // Se mudou o email, permitir nova verificação
-            if (verificacaoRealizada && this.value.length > 0) {
-                verificacaoRealizada = false;
-                telefonePermitido = false;
-                limparAvisos();
-                habilitarFormulario();
+        // Verificação automática ao sair do campo nome (se telefone já estiver preenchido)
+        document.getElementById('nome').addEventListener('blur', async function() {
+            const telefone = document.getElementById('telefone').value;
+            if (!verificacaoRealizada && this.value.length >= 3 && telefone.length >= 14) {
+                verificacaoRealizada = true;
+                await verificarDuplicatas();
             }
         });
 
         // Interceptar envio do formulário
-        document.getElementById('formCadastro').addEventListener('submit', async function(e) {
-            // Prevenir envio até verificar
-            e.preventDefault();
-
+        document.querySelector('form').addEventListener('submit', async function(e) {
             // Validar email se fornecido
             const email = document.getElementById('email').value.trim();
             if (email && !validateEmail(email)) {
+                e.preventDefault();
                 alert('Por favor, digite um email válido.');
                 document.getElementById('email').focus();
                 return false;
             }
 
-            // Se não verificou duplicata ainda, verificar agora
-            if (!verificacaoRealizada) {
-                const temProblema = await verificarDuplicatas();
-                verificacaoRealizada = true;
+            // Se encontrou duplicata mas não confirmou, impedir envio
+            if (duplicataEncontrada && !document.getElementById('confirmarDuplicata').checked) {
+                e.preventDefault();
                 
-                if (temProblema) {
-                    return false; // Bloquear envio
+                if (!document.getElementById('confirmacaoDuplicata').classList.contains('show')) {
+                    // Verificar novamente antes de enviar
+                    const temDuplicata = await verificarDuplicatas();
+                    if (temDuplicata) {
+                        alert('⚠️ Por favor, verifique os possíveis cadastros duplicados antes de prosseguir.');
+                        return false;
+                    }
+                } else {
+                    alert('⚠️ Por favor, confirme que deseja prosseguir marcando a caixa de seleção.');
+                    document.getElementById('confirmarDuplicata').focus();
+                    return false;
                 }
             }
 
-            // Se telefone não é permitido, bloquear
-            if (!telefonePermitido) {
-                alert('❌ Não é possível cadastrar com estes dados. Verifique as informações acima.');
-                return false;
+            // Se não verificou ainda, verificar agora
+            if (!verificacaoRealizada) {
+                e.preventDefault();
+                const temDuplicata = await verificarDuplicatas();
+                verificacaoRealizada = true;
+                
+                if (temDuplicata) {
+                    return false;
+                } else {
+                    // Se não tem duplicata, enviar formulário
+                    this.submit();
+                }
             }
-
-            // Se chegou até aqui, pode enviar
-            this.submit();
         });
 
         // Função para validar email
@@ -789,7 +706,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         });
 
         // Validação da data no envio do formulário
-        document.getElementById('formCadastro').addEventListener('submit', function(e) {
+        document.querySelector('form').addEventListener('submit', function(e) {
             const dataInput = document.getElementById('nascimento');
             const dataValue = dataInput.value;
             
@@ -838,27 +755,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 dataInput.focus();
                 return false;
             }
+            
+            // Converter para formato YYYY-MM-DD para o servidor
+            const dataFormatada = ano + '-' + mes.toString().padStart(2, '0') + '-' + dia.toString().padStart(2, '0');
+            dataInput.value = dataFormatada;
         });
 
-        // Auto-hide mensagens de sucesso
+        // Auto-hide message
         <?php if ($message && $messageType == 'success'): ?>
         setTimeout(function() {
-            const messageDiv = document.querySelector('.message.success');
-            if (messageDiv) {
-                messageDiv.style.display = 'none';
-            }
+            document.querySelector('.message').style.display = 'none';
         }, 5000);
         <?php endif; ?>
-
-        // Fechar loading overlay ao clicar fora
-        document.getElementById('loadingOverlay').addEventListener('click', function(e) {
-            if (e.target === this) {
-                this.classList.remove('show');
-            }
-        });
-
-        console.log('🚀 Sistema de verificação rigorosa carregado!');
-        console.log('📞 BLOQUEIO POR TELEFONE: Ativado');
     </script>
 </body>
 </html>
